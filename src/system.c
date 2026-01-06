@@ -87,7 +87,7 @@ static mytop_status_t extract_field_info(mem_info_t *mem, char *line,
 
   // Check input parameters
   if (!mem || !line || !fields || !mask)
-    return MYTOP_ERR;
+    return MYTOP_ERR_PARAM;
 
   char *p = line;
   // Skip spaces
@@ -136,9 +136,14 @@ static mytop_status_t extract_field_info(mem_info_t *mem, char *line,
  * Retrieve information from the 'uname()' system call for greater stability.
  *
  * @param  sys Pointer to the sys_info_t structure for storing the result.
+ *
  * @return mytop_status_t Returns a status code 
  */
 mytop_status_t parse_version(sys_info_t *sys) {
+  // Check input parameters
+  if (!sys)
+    return MYTOP_ERR_PARAM;
+
   struct utsname buf;
   if (uname(&buf) == -1) {
     return MYTOP_ERR;
@@ -159,9 +164,14 @@ mytop_status_t parse_version(sys_info_t *sys) {
  * Cached, and automatically calculates the used and used_percent fields.
  *
  * @param  mem Pointer to the mem_info_t structure for storing the result.
+ *
  * @return mytop_status_t Returns a status code.
  */
 mytop_status_t parse_meminfo(mem_info_t *mem) {
+  // Check input parameters
+  if (!mem)
+    return MYTOP_ERR_PARAM;
+
   FILE *fp = fopen("/proc/meminfo", "r");
   if (!fp)
     return MYTOP_ERR_IO;
@@ -184,7 +194,7 @@ mytop_status_t parse_meminfo(mem_info_t *mem) {
 
   // For backward compatibility, choose the classic calculation formula
   mem->used = mem->total - mem->free - mem->buffers - mem->cached;
-  mem->used_percent = (double)mem->used / mem->total;
+  mem->used_percent = ((double)mem->used / mem->total) * 100;
 
   return MYTOP_OK;
 }
@@ -201,11 +211,14 @@ mytop_status_t parse_meminfo(mem_info_t *mem) {
  * @param mem Pointer to the populated memory information structure
  */
 void print_system_snapshot(const sys_info_t *sys, const mem_info_t *mem) {
+  // Check input parameters 
+  if (!sys || !mem)
+    return;
+
   printf("Kernel : %s\n", sys->release);
   printf("Machine: %s\n", sys->machine);
   printf("Memory : %.2lf GB / %.2lf GB (%.2lf%%)\n",
          mem_uint_convert(mem->used, UNIT_KB, UNIT_GB),
          mem_uint_convert(mem->total, UNIT_KB, UNIT_GB),
-         mem->used_percent * 100);
+         mem->used_percent);
 }
-
