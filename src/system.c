@@ -1,5 +1,5 @@
-
 #include "mytop.h"
+#include "utils.h"
 #include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -8,13 +8,6 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
-
-typedef enum {
-  UNIT_KB,
-  UNIT_MB,
-  UNIT_GB,
-  UNIT_TB,
-} mem_uint_t;
 
 enum {
   F_MEMTOTAL     = 1u << 0,
@@ -39,29 +32,6 @@ struct field {
   {"Buffers", sizeof("Buffers") - 1, offsetof(mem_info_t, buffers), F_BUFFERS},
   {"Cached", sizeof("Cached") - 1, offsetof(mem_info_t, cached), F_CACHED},
 };
-
-/**
- * @brief Define the "conversion factor" for each unit.
- */
-static uint64_t unit_factor(mem_uint_t unit) {
-  uint64_t fac = 0;
-  switch (unit) {
-    case UNIT_KB: fac = 1;                  break;
-    case UNIT_MB: fac = 1024;               break;
-    case UNIT_GB: fac = 1024 * 1024;        break;
-    case UNIT_TB: fac = 1024 * 1024 * 1024; break;
-    default: break;;
-  }
-
-  return fac;
-}
-
-/**
- * @brief Perform computer storage unit conversion.
- */
-static double mem_uint_convert(uint64_t value, mem_uint_t from, mem_uint_t to) {
-  return (double)(value * unit_factor(from)) / unit_factor(to);
-}
 
 /**
  * @brief Extract memory information from a line of /proc/meminfo.
@@ -218,7 +188,7 @@ void print_system_snapshot(const sys_info_t *sys, const mem_info_t *mem) {
   printf("Kernel : %s\n", sys->release);
   printf("Machine: %s\n", sys->machine);
   printf("Memory : %.2lf GB / %.2lf GB (%.2lf%%)\n",
-         mem_uint_convert(mem->used, UNIT_KB, UNIT_GB),
-         mem_uint_convert(mem->total, UNIT_KB, UNIT_GB),
+         mem_uint_convert(mem->used, MEM_KIB, MEM_GIB),
+         mem_uint_convert(mem->total, MEM_KIB, MEM_GIB),
          mem->used_percent);
 }

@@ -1,4 +1,6 @@
+#include "log.h"
 #include "mytop.h"
+#include <errno.h>
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -20,8 +22,11 @@ mytop_status_t parse_cpu_stat(cpu_stat_t *stat) {
     return MYTOP_ERR_PARSE;
   
   FILE *fp = fopen("/proc/stat", "r");
-  if (!fp)
-    return MYTOP_ERR;
+  if (!fp) {
+    int err = errno;
+    LOG_ERROR("CPU", "Cannot open /proc/stat file: %s", strerror(err));
+    return MYTOP_ERR_IO;
+  }
 
   // Read the first line
   char line[BUFFER_SIZE];
@@ -55,6 +60,7 @@ mytop_status_t parse_cpu_stat(cpu_stat_t *stat) {
     );
 
     if (n != 9) {
+      LOG_WARN("CPU", "Unexpected format in /proc/stat. Expected 9 fields, got %d", n);
       fclose(fp);
       return MYTOP_ERR_PARSE;
     }

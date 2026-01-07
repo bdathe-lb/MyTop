@@ -9,7 +9,7 @@ BUILD_DIR := build
 
 # Comiler and related options
 CC := gcc
-CFLAGS := -I$(INC_DIR) -Wall -Wextra -O0 -g -MMD -MP
+CFLAGS := -I$(INC_DIR) -Wall -Wextra -O0 -g -MMD -MP -fno-omit-frame-pointer -Wformat=2
 LDFLAGS := 
 
 # Automated inference
@@ -53,6 +53,9 @@ mem-check:
 		--leak-check=full \
 		--show-leak-kinds=all \
 		--track-origins=yes \
+		--num-callers=20 \
+		--error-limit=no \
+		--log-file=vg.log \
 		./$(BUILD_DIR)/$(TARGET_EXEC)
 
 # Clean
