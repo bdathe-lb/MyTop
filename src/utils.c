@@ -1,12 +1,17 @@
 #include "utils.h"
 #include "mytop_types.h"
+#include <asm-generic/errno-base.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <ctype.h>
 #include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <sys/select.h>
+#include <termios.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <termio.h>
 #include <sys/ioctl.h>
 
 /**
@@ -131,29 +136,18 @@ mytop_status_t str_to_num(const char *s, int base, numtype_t type, void *out) {
 }
 
 /**
- * @brief Get the current terminal column width (for dynamic truncation of the COMMAND column).
- *
- * @return Terminal column width; if retrieval fails, returns a conservative default value of 120.
- *
- * Note:
- *   - Only meaningful when stdout is a terminal (isatty).
- *   - Do not treat retrieval failure as an error; printing can proceed normally.
+ * @brief Get the current terminal column width and row.
  */
-int get_term_cols() {
-  int cols = 120;  // Default column
-  
-  // Check if the standard output is a terminal
-  if (!isatty(STDOUT_FILENO)) {
-    return cols;
-  }
-  
-  // Get terminal window size
+void get_term_size(int *rows, int *cols) {
   struct winsize ws;
-  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
-    cols = (int)ws.ws_col;
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
+    if (rows) *rows = ws.ws_row;
+    if (cols) *cols = ws.ws_col;
+  } else {
+    // Default value
+    if (rows) *rows = 24;
+    if (cols) *cols = 80;
   }
-
-  return cols;
 }
 
 /**
@@ -166,6 +160,65 @@ uint64_t pages_to_kb(uint64_t pages, uint64_t pagesize) {
   /* Note: pages * pagesize can be large, 
             but uint64_t is sufficient for typical machine ranges */
   return (pages * pagesize) / 1024u;
+}
+
+/**
+ * @brief Enable/disable raw mode (Raw Mode)
+ *  - enable=true: Disable enter confirmation and echo (immediate key response)
+ *  - enable=false: Restore normal mode
+ */
+static struct termios orig_termios;
+int set_raw_mode(bool enable) {
+  if (enable) {
+    // 1. Get current attributes
+    if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) return -1;
+
+    struct termios raw = orig_termios;
+
+    // 2. Modify attributes
+    // ICANON: Turn off canonical mode (no need for Enter)
+    // ECHO: Turn off echo (do not display input characters) 
+    raw.c_lflag &= ~(ICANON | ECHO);
+
+    // VMIN=0, VTIME=0: Read returns immediately, does not block
+    raw.c_cc[VMIN] = 0;
+    raw.c_cc[VTIME] = 0;
+
+    // 3. Set new attributes
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) return -1;
+  } else {
+    // Restore original attributes
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1) return -1;
+  }
+
+  return 0;
+}
+
+// Check for key input (non-blocking)
+bool kbhit() {
+  struct timeval tv = {0L, 0L};
+
+  fd_set fds;
+  FD_ZERO(&fds);
+  FD_SET(STDIN_FILENO, &fds);
+
+  // select() check if stdin is readable
+  int r = select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv);
+  if (r > 0) {
+    return FD_ISSET(STDIN_FILENO, &fds);
+  }
+
+  if (r == 0) {
+    // No input available
+    return false;
+  }
+
+  if (errno == EINTR) {
+    // Interrupted by signal
+    return false;
+  }
+
+  return false;
 }
 
 /**
@@ -232,4 +285,34 @@ double mem_uint_convert(uint64_t value, mem_uint_t from, mem_uint_t to) {
   const long double out = bytes / f_to;
 
   return (double)out;
+}
+
+// Clear screen.
+void term_clear() {
+  printf("\033[2J");
+}
+
+// Move cursor.
+void term_move_cursor(int row, int col) {
+  printf("\033[%d;%dH", row, col);
+}
+
+// Cursor home.
+void term_home() {
+  printf("\033[H");
+}
+
+// Hide cursor.
+void term_hide_cursor() {
+  printf("\033[?25l");
+}
+
+// Show cursor.
+void term_show_cursor() {
+  printf("\033[?25h");
+}
+
+// Flush the buffer.
+void term_refresh() {
+  fflush(stdout);
 }

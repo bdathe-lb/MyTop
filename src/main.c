@@ -1,7 +1,9 @@
-
 #include "log.h"
 #include "mytop.h"
 #include "mytop_types.h"
+#include "utils.h"
+#include <bits/types/struct_timeval.h>
+#include <sys/select.h>
 #include <unistd.h>
 #include <stdio.h>
 
@@ -10,66 +12,87 @@ int main() {
 
   LOG_INFO("Core", "MyTop starting up...");
 
+  proc_list_t *list = create_procs_list(0);
+  if (!list) return 1;
+
   sys_info_t sys = {0};
   mem_info_t mem = {0};
   cpu_stat_t prev = {0}, curr = {0};
-  proc_list_t *list = create_procs_list(0);
-  if (!list) {
-    LOG_FATAL("Main", "Failed to allocate memory for process list");
-  }
-
+  
   // 1. Initial sampling
-  if (parse_version(&sys) != MYTOP_OK) {
-    LOG_FATAL("System", "Failed to parse system info");
+  parse_version(&sys);
+  parse_meminfo(&mem);
+  parse_cpu_stat(&prev);
+  parse_procs(list);
+
+  // Activacate Raw Mode
+  if (set_raw_mode(true) != 0) {
+    LOG_WARN("Term", "Failed to enable raw mode");
   }
+  
+  // Hide the cursor
+  term_hide_cursor();
 
-  if (parse_meminfo(&mem) != MYTOP_OK) {
-    LOG_FATAL("System", "Failed to parse memory info");
-  }
+  int running = 1;
+  while (running) {
+    // 2. Data acquisition
+    parse_cpu_stat(&curr);
+    parse_meminfo(&mem);
 
-  if (parse_cpu_stat(&prev) != MYTOP_OK) {
-    LOG_FATAL("CPU", "Cannot read /proc/stat"); 
-  }
+    list->count = 0;
+    parse_procs(list);
 
-  if (parse_procs(list) != MYTOP_OK) {
-    LOG_FATAL("Process", "Process information parsing failed");
-  }
+    // 3. Compute CPU usage percentage
+    double cpu_usage = calculate_cpu_usage(&prev, &curr);
 
-   while (1) {
-     // 2. Sampling period: 1 second
-     sleep(1);
+    // 4. Simple printing
+    // Move cursor to top‑left corner and clear screen
+    term_home();
+    term_clear();
+    // Print system and memory related informations
+    print_system_snapshot(&sys, &mem);
+    printf("CPU Usage: %.2f%%\n", cpu_usage);
+    printf("\n");
+    // Print processes informations
+    print_procs(list);
+    // Force a flush; otherwise, output may be buffered in Raw Mode
+    term_refresh();
 
-     // 3. Current sampling
-     if (parse_cpu_stat(&curr) != MYTOP_OK) {
-       LOG_ERROR("CPU", "Failed to update CPU stats");
-       sleep(1);
-       continue; 
-     }
+    // 5. Update
+    prev = curr;
 
-     if (parse_meminfo(&mem) != MYTOP_OK) {
-       LOG_ERROR("System", "Failed to update memory information");
-       sleep(1);
-       continue;
-     }
+    // 6. Intelligent delay (wait for 1 second or until a key press interrupts)
+    struct timeval timeout;
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
 
-    if (parse_procs(list) != MYTOP_OK) {
-      LOG_ERROR("Process", "Failed to update proc information");
-      sleep(1);
-      continue;
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+
+    int ret = select(STDIN_FILENO + 1, &fds, NULL, NULL, &timeout);
+
+    if (ret > 0) {
+      if (FD_ISSET(STDIN_FILENO, &fds)) {
+        char c;
+        if (read(STDIN_FILENO, &c, 1) == 1) {
+          if (c == 'q' || c == 'Q') {
+            running = 0;
+          }
+        }
+      }
     }
+  }
 
-     // 4. Compute CPU usage percentage
-     double cpu_usage = calculate_cpu_usage(&prev, &curr);
+  // Restore cursor visibility
+  term_show_cursor();
 
-     // 5. Simple printing
-     printf("\033[2J\033[H");
-     print_system_snapshot(&sys, &mem);
-     printf("CPU Usage: %.2f%%\n", cpu_usage);
-     print_procs(list);
+  // Restore terminal mode
+  set_raw_mode(false);
 
-     // 6. Update
-     prev = curr;
-   }
+  free_procs_list(list);
+
+  LOG_INFO("Core", "MyTop exited gracefully.");
 
   return 0;
 }

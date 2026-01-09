@@ -389,13 +389,18 @@ void print_procs(const proc_list_t *list) {
   if (!list) 
     return;
 
+  int rows, cols;
+  // Get terminal width and length
+  get_term_size(&rows, &cols);
+  int reserved_lines = 3 + 1 + 1;
+  int max_procs_to_show = rows - reserved_lines;
+  if (max_procs_to_show < 0) max_procs_to_show = 0;
+
   // Read system time unit and page size
   const long hz = sysconf(_SC_CLK_TCK);
   const long pagesize_l = sysconf(_SC_PAGESIZE);
   // sysconf fails and returns -1
   const uint64_t pagesize = (pagesize_l > 0) ? (uint64_t)pagesize_l : 4096u;
-  // Get terminal width
-  const int cols = get_term_cols();
   // Fixed column width definition
   const int W_PID   = 6;
   const int W_PPID  = 6;
@@ -429,8 +434,10 @@ void print_procs(const proc_list_t *list) {
            W_TIME, "TIME+",
            "COMMAND");
   
-  // for (size_t i = 0; i < list->count; i++) {
-  for (size_t i = 0; i < 10; i++) {
+  size_t limit = (size_t)max_procs_to_show;
+  if (limit > list->count) limit = list->count;
+
+  for (size_t i = 0; i < limit; i++) {
     const proc_info_t *p = &list->procs[i];
     uint64_t virt_kb = mem_uint_convert(p->vsize, MEM_B, MEM_KIB);
     uint64_t res_kb  = pages_to_kb(p->rss, pagesize);

@@ -17,8 +17,7 @@ enum {
   F_CACHED       = 1u << 4,
 };
 
-#define ALL_MEM_BITS \
-   (F_MEMTOTAL | F_MEMFREE | F_MEMAVAILABLE | F_BUFFERS | F_CACHED)
+#define ALL_MEM_BITS (F_MEMTOTAL | F_MEMFREE | F_MEMAVAILABLE | F_BUFFERS | F_CACHED)
 
 struct field {
   char    *name;       // Field name
@@ -52,7 +51,7 @@ struct field {
 static mytop_status_t extract_field_info(mem_info_t *mem, char *line, 
                                          const struct field *fields, 
                                          size_t fields_len, uint32_t *mask) {
-  // e.g. 
+  // e.g.
   // "MemTotal: 15716420 kB\n"
 
   // Check input parameters
