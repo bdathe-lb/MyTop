@@ -238,6 +238,103 @@ static mytop_status_t read_stat(const char *path, proc_info_t *info) {
 }
 
 /**
+ * Helper function
+ *
+ * @brief Uses PID to check whether a process exists in the list.
+ *
+ * @param  list  Process list.
+ * @param  pid   The pid of the process to be searched for.
+ *
+ * @return If found, return the index, otherwise, return -1.
+ */
+static int find_process_by_pid(const proc_list_t *list, uint64_t pid) {
+  // Traverse the list to search
+  for (size_t idx = 0; idx < list->count; ++ idx) {
+    if (list->procs[idx].pid == pid) return idx;
+  }
+
+  return -1;
+}
+
+/**
+ * Helper function
+ *
+ * @brief Comparison function for qsort, 
+ *        sorting by cpu_percent in descending order.
+ *
+ * @note  qsort does not care about the actual value,
+ *        only about sign of the comparison result:
+ *         - < 0: pa is placed before pb.
+ *         - = 0: pa and pb are considered equal.
+ *         - > 0: pa is placed after pb.
+ */
+static int cmp_proc_cpu_desc(const void *pa, const void *pb) {
+  const proc_info_t *a = (const proc_info_t *)pa;
+  const proc_info_t *b = (const proc_info_t *)pb;
+
+  double a_cpu_percent = a->cpu_percent;
+  double b_cpu_percent = b->cpu_percent;
+
+  if (a_cpu_percent < b_cpu_percent) return 1;
+  if (a_cpu_percent > b_cpu_percent) return -1;
+
+  if (a->pid < b->pid) return -1;
+  if (a->pid > b->pid) return 1;
+
+  return 0;
+}
+
+/**
+ * Helper function
+ *
+ * @brief Comparison function for qsort, 
+ *        sorting by rss in descending order.
+ *
+ * @note  qsort does not care about the actual value,
+ *        only about sign of the comparison result:
+ *         - < 0: pa is placed before pb.
+ *         - = 0: pa and pb are considered equal.
+ *         - > 0: pa is placed after pb.
+ */
+static int cmp_proc_rss_desc(const void *pa, const void *pb) {
+  const proc_info_t *a = (const proc_info_t *)pa;
+  const proc_info_t *b = (const proc_info_t *)pb;
+
+  double a_rss= a->rss;
+  double b_rss = b->rss;
+
+  if (a_rss < b_rss) return 1;
+  if (a_rss > b_rss) return -1;
+
+  if (a->pid < b->pid) return -1;
+  if (a->pid > b->pid) return 1;
+
+  return 0;
+}
+
+/**
+ * Helper function
+ *
+ * @brief Comparison function for qsort, 
+ *        sorting by pid in ascending order.
+ *
+ * @note  qsort does not care about the actual value,
+ *        only about sign of the comparison result:
+ *         - < 0: pa is placed before pb.
+ *         - = 0: pa and pb are considered equal.
+ *         - > 0: pa is placed after pb.
+ */
+static int cmp_proc_pid_desc(const void *pa, const void *pb) {
+  const proc_info_t *a = (const proc_info_t *)pa;
+  const proc_info_t *b = (const proc_info_t *)pb;
+
+  if (a->pid < b->pid) return -1;
+  if (a->pid > b->pid) return 1;
+
+  return 0;
+}
+
+/**
  * @brief Create a new stored process information list.
  */
 proc_list_t *create_procs_list(size_t capacity_hint) {
@@ -383,6 +480,64 @@ mytop_status_t parse_procs(proc_list_t *list) {
 }
 
 /**
+ * @brief Calculate CPU usage for all processes.
+ *
+ * Iterate over each process in curr and search for the corresponding PID in prev.
+ * If found, compute the difference and assign it to curr->procs[i].cpu_percent.
+ *
+ * @param prev Process list from the previous round.
+ * @param curr Current process list.
+ * @param total_delta System‑wide CPU time delta (obtained from Phase 2 calculation).
+ */
+void calculate_procs_cpu(const proc_list_t *prev, proc_list_t *curr, uint64_t total_delta) {
+  if (total_delta == 0) return;
+
+  long num_cores = get_core_count();
+
+  // Traverse every process in current list
+  for (size_t i = 0; i < curr->count; ++ i) {
+    // Found process in previous list
+    int index = find_process_by_pid(prev, curr->procs[i].pid);
+    // Case 1: Not found!
+    if (index == -1) {
+      curr->procs[i].cpu_percent = 0.0;
+    }
+    // Case 2: Found!
+    else {
+      // Compute cpu_percent
+      uint64_t proc_delta = 
+             (curr->procs[i].stime + curr->procs[i].utime) -  
+             (prev->procs[index].stime + prev->procs[index].utime);
+       
+      curr->procs[i].cpu_percent = ((double)proc_delta / total_delta) * 100 * num_cores;
+    }
+  }
+}
+
+
+/**
+ * @brief Sort the process list.
+ */
+void sort_procs_by_mode(proc_list_t *list, sort_mode_t mode) {
+  if (!list)
+    return;
+
+  switch (mode) {
+    case SORT_CPU:
+      qsort(list->procs, list->count, sizeof(list->procs[0]), cmp_proc_cpu_desc);
+      break;
+    case SORT_MEM:
+      qsort(list->procs, list->count, sizeof(list->procs[0]), cmp_proc_rss_desc);
+      break;
+    case SORT_PID:
+      qsort(list->procs, list->count, sizeof(list->procs[0]), cmp_proc_pid_desc);
+      break;
+    default:
+      break;
+  }
+}
+
+/**
  * @brief Debug print: Output information of the top N processes.
  */
 void print_procs(const proc_list_t *list) {
@@ -392,7 +547,7 @@ void print_procs(const proc_list_t *list) {
   int rows, cols;
   // Get terminal width and length
   get_term_size(&rows, &cols);
-  int reserved_lines = 3 + 1 + 1;
+  int reserved_lines = 5 + 1 + 1 + 2;
   int max_procs_to_show = rows - reserved_lines;
   if (max_procs_to_show < 0) max_procs_to_show = 0;
 
@@ -407,6 +562,7 @@ void print_procs(const proc_list_t *list) {
   const int W_PGRP  = 6;
   const int W_VIRT  = 8;
   const int W_RES   = 8;
+  const int W_CPU   = 8;
   const int W_TIME  = 10;
 
   int fixed_width =
@@ -414,21 +570,23 @@ void print_procs(const proc_list_t *list) {
       1     + 1 +   /* S + space   */
       W_PPID+ 1 +   /* ...         */
       W_PGRP+ 1 +
+      W_CPU + 1 + 
       W_VIRT+ 1 +
       W_RES + 1 +
       W_TIME+ 1;
   
   // Compute COMMAND field width
-  int cmd_width = cols - fixed_width;
+  int cmd_width = cols - fixed_width - 1;
   if (cmd_width < 10) cmd_width = 10;      
   if (cmd_width > 80) cmd_width = 80;
 
   // Print table header
-  printf("%*s %s %*s %*s %*s %*s %*s %s\n",
+  printf("%*s %s %*s %*s %*s %*s %*s %*s %s\n",
            W_PID,  "PID",
            "S",
            W_PPID, "PPID",
            W_PGRP, "PGRP",
+           W_CPU,  "CPU",
            W_VIRT, "VIRT",
            W_RES,  "RES",
            W_TIME, "TIME+",
@@ -444,14 +602,15 @@ void print_procs(const proc_list_t *list) {
 
     char timebuf[16];
     format_time_hms(timebuf, sizeof(timebuf), p->utime + p->stime, hz);
-    printf("%*" PRIu64 " %c %*" PRIu64 " %*" PRIu64 " %*" PRIu64 " %*" PRIu64 " %*s %-.*s\n",
-            W_PID,  p->pid,
-            p->state,
-            W_PPID, p->ppid,
-            W_PGRP, p->pgrp,
-            W_VIRT, virt_kb,
-            W_RES,  res_kb,
-            W_TIME, timebuf,
-            cmd_width, p->cmd);
+    printf("%*" PRIu64 " %c %*" PRIu64 " %*" PRIu64 " %*.*f%% %*" PRIu64 " %*" PRIu64 " %*s %-.*s\n",
+             W_PID,  p->pid,
+             p->state,
+             W_PPID, p->ppid,
+             W_PGRP, p->pgrp,
+             W_CPU, 2, p->cpu_percent,
+             W_VIRT, virt_kb,
+             W_RES,  res_kb,
+             W_TIME, timebuf,
+             cmd_width, p->cmd);
   }
 }

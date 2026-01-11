@@ -287,32 +287,100 @@ double mem_uint_convert(uint64_t value, mem_uint_t from, mem_uint_t to) {
   return (double)out;
 }
 
-// Clear screen.
-void term_clear() {
+/**
+ * @brief Read one line of input in Raw Mode (blocking)
+ * @param buf Output buffer
+ * @param maxlen Maximum buffer length
+ * @return int Number of characters read
+ */
+int term_read_line(char *buf, size_t maxlen) {
+  size_t len = 0;
+  char c;
+
+  while (1) {
+    // Blocking read of 1 character
+    if (read(STDIN_FILENO, &c, 1) != 1) break;
+
+    // Enter key
+    if (c == '\n' || c == '\r') {
+      break;
+    }
+    // Backspace key
+    else if (c == 27 || c == '\b') {
+      if (len > 0) {
+        len --;
+        // Visual erasure: Move cursor back, print space to overwrite, 
+        // then move cursor back again
+        printf("\b \b"); 
+        fflush(stdout);
+      }
+    }
+    // Regular characters
+    else if (len < maxlen - 1) {
+      if (!iscntrl(c)) {
+        buf[len ++] = c;
+        printf("%c", c);
+        fflush(stdout);
+      }
+    }
+  }
+
+  buf[len] = '\0';
+  return len;
+}
+
+/**
+ * @brief Get the count of core.
+ */
+long get_core_count() {
+  return sysconf(_SC_NPROCESSORS_ONLN);
+}
+
+/**
+ * @brief Clear screen.
+ */
+void term_clear_screen() {
   printf("\033[2J");
 }
 
-// Move cursor.
+/**
+ * @brief Clear line.
+ */
+void term_clear_line() {
+  printf("\033[K");
+}
+
+/**
+ * @brief Move cursor.
+ */
 void term_move_cursor(int row, int col) {
   printf("\033[%d;%dH", row, col);
 }
 
-// Cursor home.
+/**
+ * @brief Cursor home.
+ */
 void term_home() {
   printf("\033[H");
 }
 
-// Hide cursor.
+/**
+ * @brief Hide cursor.
+ */
 void term_hide_cursor() {
   printf("\033[?25l");
 }
 
-// Show cursor.
+/**
+ * @brief Show cursor.
+ */
 void term_show_cursor() {
   printf("\033[?25h");
 }
 
-// Flush the buffer.
+/**
+ * @brief Flush the buffer.
+ */
 void term_refresh() {
   fflush(stdout);
 }

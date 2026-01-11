@@ -48,14 +48,20 @@ void format_time_hms(char *out, size_t out_sz, uint64_t jiffies, long hz);
 double mem_uint_convert(uint64_t value, mem_uint_t from, mem_uint_t to);
 
 /* --------- Terminal Control & UI Utilities --------- */
+// Get the count of cores.
+long get_core_count();
 // Get the current terminal column width and row.
 void get_term_size(int *rows, int *cols);
 // Enable/disable raw mode (Raw Mode)
 int set_raw_mode(bool enable);
+// Read one line of input in Raw Mode (blocking)
+int term_read_line(char *buf, size_t maxlen);
 // Check for key input (non-blocking)
 bool kbhit();
 // Clear screen.
-void term_clear();
+void term_clear_screen();
+// Clear line.
+void term_clear_line();
 // Move cursor.
 void term_move_cursor(int row, int col);
 // Cursor home.

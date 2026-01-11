@@ -72,12 +72,14 @@ mytop_status_t parse_cpu_stat(cpu_stat_t *stat) {
 /**
  * @brief Calculate CPU usage based on two samples.
  *
- * @param prev Data from the previous sample.
- * @param curr Data from the current sample.
+ * @param prev        Data from the previous sample.
+ * @param curr        Data from the current sample.
+ * @param total_delta Total CPU time interval, used for subsequent calculation
+ *                    of process CPU usage percentage. [out]
  *
  * @return double CPU usage percentage (0.0 - 100.0)
  */
-double calculate_cpu_usage(const cpu_stat_t *prev, const cpu_stat_t *curr) {
+double calculate_cpu_usage(const cpu_stat_t *prev, const cpu_stat_t *curr, uint64_t *total_delta) {
   // 1. Compute idle time and total time of prev
   uint64_t prev_idle = prev->idle + prev->iowait;
   uint64_t prev_nonidle = prev->user + prev->nice + prev->system +
@@ -95,6 +97,8 @@ double calculate_cpu_usage(const cpu_stat_t *prev, const cpu_stat_t *curr) {
   //    increasing counters, where the values represent cumulative totals
   uint64_t delta_idle = curr_idle - prev_idle;
   uint64_t delta_total = curr_total - prev_total;
+  
+  *total_delta = delta_total;
 
   if (delta_total == 0) 
     return 0.0;

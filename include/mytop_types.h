@@ -70,6 +70,7 @@ typedef struct {
   uint64_t vsize;         // (23) Virtual memory size (byte)
   uint64_t rss;           // (24) Resident Set Size (Number of pages of physical memory 
                           //      actually occupied by the process)
+  double cpu_percent;     
 } proc_info_t;
 
 // Process list container
@@ -78,5 +79,12 @@ typedef struct {
   size_t count;
   size_t capacity;
 } proc_list_t;
+
+// Sort status
+typedef enum {
+    SORT_CPU,
+    SORT_MEM,
+    SORT_PID
+} sort_mode_t;
 
 #endif // !MYTOP_TYPES_H
